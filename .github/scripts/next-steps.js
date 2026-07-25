@@ -71,7 +71,7 @@ module.exports = async ({ github, context, number }) => {
     `query($owner:String!,$repo:String!,$number:Int!){
        repository(owner:$owner,name:$repo){
          issue(number:$number){
-           closedByPullRequestsReferences(first:1,includeClosedPrs:true){totalCount}
+           closedByPullRequestsReferences(first:1,includeClosedPrs:false){totalCount}
            issueFieldValues(first:20){nodes{
              ... on IssueFieldSingleSelectValue{
                field{... on IssueFieldCommon{name}} value }
@@ -85,8 +85,9 @@ module.exports = async ({ github, context, number }) => {
   );
 
   const issueData = data.repository.issue;
-  // A linked pull request is the authoritative "has a patch" signal (replaces
-  // the old manual "Has patch" flag).
+  // An OPEN linked pull request is the authoritative "has a patch" signal
+  // (replaces the old manual "Has patch" flag). includeClosedPrs:false means a
+  // closed/abandoned PR reverts the ticket to "Needs patch".
   const hasPatch = issueData.closedByPullRequestsReferences.totalCount > 0;
   let stage = null;
   const flags = new Set();
