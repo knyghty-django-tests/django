@@ -1,9 +1,16 @@
 name: Triage bot
 
-# Lets ANY commenter drive a ticket through the triage workflow, the way any
-# logged-in user can in Trac. A comment line like "@triagebot-test accept" sets
-# the Triage stage issue field. No org membership required; the comment author
-# is recorded immutably by GitHub, so every change is auditable and reversible.
+# Lets ANY commenter drive a ticket the way any logged-in user can in Trac:
+#   @triagebot-test accept | ready | needs-design | someday | unreview
+#       -> set the Triage stage issue field
+#   @triagebot-test claim
+#       -> take ownership: assign yourself, REMOVING any previous assignee
+#          (people abandon claims; taking over an abandoned ticket is required)
+#   @triagebot-test unclaim
+#       -> remove yourself as assignee
+#
+# No org membership needed; the comment author is recorded immutably by GitHub,
+# so every change is auditable and reversible.
 #
 # Safety: the untrusted comment body is only read as a JavaScript variable
 # inside actions/github-script. It is never interpolated into a shell run: step,
@@ -20,7 +27,6 @@ permissions:
 
 jobs:
   triage:
-    # Ignore comments on pull requests and comments posted by bots.
     if: >-
       github.event.issue.pull_request == null &&
       github.event.comment.user.type != 'Bot'
@@ -45,46 +51,57 @@ jobs:
 
             const comment = context.payload.comment;
             const issue = context.payload.issue;
-            const body = comment.body || '';
+            const actor = comment.user.login;
+            const repo = { owner: context.repo.owner, repo: context.repo.repo };
 
-            // Collect verbs from lines that start with the handle.
-            let stage = null;
-            let sawCommand = false;
-            let unknown = null;
-            for (const raw of body.split(/\r?\n/)) {
+            // Gather the recognised command from lines starting with the handle.
+            let stage = null, assign = null, sawCommand = false, unknown = null;
+            for (const raw of (comment.body || '').split(/\r?\n/)) {
               const line = raw.trim();
               if (!line.toLowerCase().startsWith(HANDLE)) continue;
               sawCommand = true;
               const verb = line.slice(HANDLE.length).trim().toLowerCase().split(/\s+/)[0];
               if (verb in STAGE_VERBS) stage = STAGE_VERBS[verb];
+              else if (verb === 'claim') assign = 'claim';
+              else if (verb === 'unclaim') assign = 'unclaim';
               else unknown = verb;
             }
             if (!sawCommand) return;
 
             const react = (content) =>
               github.rest.reactions.createForIssueComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: comment.id,
-                content,
+                ...repo, comment_id: comment.id, content,
               });
 
-            if (!stage) {
-              core.warning(`Unrecognised command: ${unknown}`);
-              await react('confused');
-              return;
+            let acted = false;
+
+            if (stage) {
+              const field = map['Triage stage'];
+              await github.graphql(
+                `mutation($issue:ID!,$fields:[IssueFieldCreateOrUpdateInput!]!){
+                   setIssueFieldValue(input:{issueId:$issue,issueFields:$fields}){
+                     clientMutationId
+                   }
+                 }`,
+                { issue: issue.node_id,
+                  fields: [{ fieldId: field.id, singleSelectOptionId: field.options[stage] }] }
+              );
+              acted = true;
             }
 
-            const field = map['Triage stage'];
-            await github.graphql(
-              `mutation($issue:ID!,$fields:[IssueFieldCreateOrUpdateInput!]!){
-                 setIssueFieldValue(input:{issueId:$issue,issueFields:$fields}){
-                   clientMutationId
-                 }
-               }`,
-              {
-                issue: issue.node_id,
-                fields: [{ fieldId: field.id, singleSelectOptionId: field.options[stage] }],
-              }
-            );
-            await react('+1');
+            if (assign === 'claim') {
+              // Takeover: replace the assignee set with just the commenter,
+              // unassigning whoever held it before.
+              await github.rest.issues.update({
+                ...repo, issue_number: issue.number, assignees: [actor],
+              });
+              acted = true;
+            } else if (assign === 'unclaim') {
+              await github.rest.issues.removeAssignees({
+                ...repo, issue_number: issue.number, assignees: [actor],
+              });
+              acted = true;
+            }
+
+            await react(acted ? '+1' : 'confused');
+            if (!acted) core.warning(`Unrecognised command: ${unknown}`);
