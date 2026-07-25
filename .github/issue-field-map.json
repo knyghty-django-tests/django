@@ -86,5 +86,13 @@
   },
   "Keywords": {
     "id": "IFT_kgDOAqmFCw"
+  },
+  "Backported to": {
+    "id": "IFMS_kgDOAqmWhg",
+    "options": {
+      "5.2": "IFSSO_kgDOBKjkzg",
+      "6.0": "IFSSO_kgDOBKjkzw",
+      "6.1": "IFSSO_kgDOBKjk0A"
+    }
   }
 }

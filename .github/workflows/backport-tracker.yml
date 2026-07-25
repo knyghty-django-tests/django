@@ -1,0 +1,86 @@
+name: Backport tracker
+
+# When a PR merges into a stable release branch (stable/X.Y.x) and references a
+# ticket, record that release on the ticket's "Backported to" field, so a ticket
+# shows at a glance which releases the fix reached. The linked PRs remain in the
+# timeline for detail; this just surfaces the summary as structured metadata.
+#
+# Issue references are read from the PR body/title (e.g. "Backport of #123" or
+# "Fixes #123"), because "Fixes #N" does not auto-populate closing references
+# for PRs targeting a non-default branch.
+#
+# Safety: PR body/title are only read as JS variables inside github-script and
+# matched with a numeric regex; nothing is interpolated into a shell run: step.
+
+on:
+  pull_request_target:
+    types: [closed]
+    branches: ['stable/**']
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  record:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const map = JSON.parse(
+              fs.readFileSync('.github/issue-field-map.json', 'utf8')
+            );
+            const pr = context.payload.pull_request;
+            const repo = { owner: context.repo.owner, repo: context.repo.repo };
+
+            // stable/6.0.x -> "6.0"
+            const m = pr.base.ref.match(/^stable\/(\d+\.\d+)\.x$/);
+            if (!m) return;
+            const release = m[1];
+            const field = map['Backported to'];
+            const optionId = field.options[release];
+            if (!optionId) { core.warning(`No Backported-to option for ${release}`); return; }
+
+            // Collect referenced issue numbers from the PR title and body.
+            const text = `${pr.title}\n${pr.body || ''}`;
+            const nums = new Set();
+            for (const match of text.matchAll(/#(\d+)/g)) nums.add(Number(match[1]));
+            if (!nums.size) return;
+
+            for (const number of nums) {
+              // Read existing Backported-to options and merge in the new release.
+              const data = await github.graphql(
+                `query($owner:String!,$repo:String!,$number:Int!){
+                   repository(owner:$owner,name:$repo){
+                     issue(number:$number){ id
+                       issueFieldValues(first:20){nodes{
+                         ... on IssueFieldMultiSelectValue{
+                           field{... on IssueFieldCommon{name}} options{id} }
+                       }}
+                     }
+                   }
+                 }`,
+                { owner: repo.owner, repo: repo.repo, number }
+              ).catch(() => null);
+              const issue = data && data.repository && data.repository.issue;
+              if (!issue) continue; // not an issue in this repo
+
+              const ids = new Set([optionId]);
+              for (const n of issue.issueFieldValues.nodes) {
+                if (n.field && n.field.name === 'Backported to')
+                  for (const o of n.options) ids.add(o.id);
+              }
+              await github.graphql(
+                `mutation($issue:ID!,$fields:[IssueFieldCreateOrUpdateInput!]!){
+                   setIssueFieldValue(input:{issueId:$issue,issueFields:$fields}){
+                     clientMutationId
+                   }
+                 }`,
+                { issue: issue.id,
+                  fields: [{ fieldId: field.id, multiSelectOptionIds: [...ids] }] }
+              );
+            }
