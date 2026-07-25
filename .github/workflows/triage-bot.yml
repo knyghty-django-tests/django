@@ -1,0 +1,90 @@
+name: Triage bot
+
+# Lets ANY commenter drive a ticket through the triage workflow, the way any
+# logged-in user can in Trac. A comment line like "@triagebot-test accept" sets
+# the Triage stage issue field. No org membership required; the comment author
+# is recorded immutably by GitHub, so every change is auditable and reversible.
+#
+# Safety: the untrusted comment body is only read as a JavaScript variable
+# inside actions/github-script. It is never interpolated into a shell run: step,
+# and the workflow never checks out or executes comment-supplied code, so there
+# is no command-injection surface.
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  triage:
+    # Ignore comments on pull requests and comments posted by bots.
+    if: >-
+      github.event.issue.pull_request == null &&
+      github.event.comment.user.type != 'Bot'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const map = JSON.parse(
+              fs.readFileSync('.github/issue-field-map.json', 'utf8')
+            );
+            const HANDLE = '@triagebot-test';
+            const STAGE_VERBS = {
+              'accept': 'Accepted',
+              'ready': 'Ready for checkin',
+              'needs-design': 'Design decision needed',
+              'someday': 'Someday/Maybe',
+              'unreview': 'Unreviewed',
+            };
+
+            const comment = context.payload.comment;
+            const issue = context.payload.issue;
+            const body = comment.body || '';
+
+            // Collect verbs from lines that start with the handle.
+            let stage = null;
+            let sawCommand = false;
+            let unknown = null;
+            for (const raw of body.split(/\r?\n/)) {
+              const line = raw.trim();
+              if (!line.toLowerCase().startsWith(HANDLE)) continue;
+              sawCommand = true;
+              const verb = line.slice(HANDLE.length).trim().toLowerCase().split(/\s+/)[0];
+              if (verb in STAGE_VERBS) stage = STAGE_VERBS[verb];
+              else unknown = verb;
+            }
+            if (!sawCommand) return;
+
+            const react = (content) =>
+              github.rest.reactions.createForIssueComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: comment.id,
+                content,
+              });
+
+            if (!stage) {
+              core.warning(`Unrecognised command: ${unknown}`);
+              await react('confused');
+              return;
+            }
+
+            const field = map['Triage stage'];
+            await github.graphql(
+              `mutation($issue:ID!,$fields:[IssueFieldCreateOrUpdateInput!]!){
+                 setIssueFieldValue(input:{issueId:$issue,issueFields:$fields}){
+                   clientMutationId
+                 }
+               }`,
+              {
+                issue: issue.node_id,
+                fields: [{ fieldId: field.id, singleSelectOptionId: field.options[stage] }],
+              }
+            );
+            await react('+1');
