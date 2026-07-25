@@ -1,0 +1,76 @@
+name: Review sets patch-needs-improvement
+
+# When a reviewer submits a "Request changes" review on a PR, set the
+# "Patch needs improvement" flag on the issue(s) the PR would close, moving the
+# ticket to "Waiting on author". The author clears it later with
+# "@triagebot-test ready-for-review" on the PR (no write access needed), which
+# sends the ticket back to the review queue.
+#
+# Reviewing is a pool in Django (anyone reviews), so this deliberately doesn't
+# touch reviewer assignment — it only reflects review state as a flag.
+#
+# Safety: only issue numbers (integers) reach the shared script; no PR- or
+# review-supplied text is interpolated into a shell run: step.
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  issues: write
+  pull-requests: read
+  contents: read
+
+jobs:
+  flag:
+    if: github.event.review.state == 'changes_requested'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const map = JSON.parse(
+              fs.readFileSync('.github/issue-field-map.json', 'utf8')
+            );
+            const refresh = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/next-steps.js`);
+            const repo = { owner: context.repo.owner, repo: context.repo.repo };
+            const flagsField = map['Flags'];
+            const optionId = flagsField.options['Patch needs improvement'];
+
+            const data = await github.graphql(
+              `query($owner:String!,$repo:String!,$pr:Int!){
+                 repository(owner:$owner,name:$repo){
+                   pullRequest(number:$pr){
+                     closingIssuesReferences(first:20){nodes{
+                       number id
+                       issueFieldValues(first:20){nodes{
+                         ... on IssueFieldMultiSelectValue{
+                           field{... on IssueFieldCommon{name}} options{id} }
+                       }}
+                     }}
+                   }
+                 }
+               }`,
+              { owner: repo.owner, repo: repo.repo,
+                pr: context.payload.pull_request.number }
+            );
+
+            for (const issue of
+                 data.repository.pullRequest.closingIssuesReferences.nodes) {
+              const ids = new Set([optionId]);
+              for (const n of issue.issueFieldValues.nodes) {
+                if (n.field && n.field.name === 'Flags')
+                  for (const o of n.options) ids.add(o.id);
+              }
+              await github.graphql(
+                `mutation($issue:ID!,$fields:[IssueFieldCreateOrUpdateInput!]!){
+                   setIssueFieldValue(input:{issueId:$issue,issueFields:$fields}){
+                     clientMutationId }}`,
+                { issue: issue.id,
+                  fields: [{ fieldId: flagsField.id, multiSelectOptionIds: [...ids] }] });
+              await refresh({ github, context, number: issue.number });
+            }

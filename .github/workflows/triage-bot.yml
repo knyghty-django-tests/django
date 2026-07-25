@@ -1,21 +1,29 @@
 name: Triage bot
 
-# Lets ANY commenter drive a ticket the way any logged-in user can in Trac:
-#   @triagebot-test accept | ready | needs-design | someday | unreview
-#       -> set the Triage stage issue field
-#   @triagebot-test claim
-#       -> take ownership: assign yourself, REMOVING any previous assignee
-#          (people abandon claims; taking over an abandoned ticket is required)
-#   @triagebot-test unclaim
-#       -> remove yourself as assignee
+# Lets ANY commenter drive a ticket the way any logged-in user can in Trac.
 #
-# No org membership needed; the comment author is recorded immutably by GitHub,
-# so every change is auditable and reversible.
+# On an issue:
+#   @triagebot-test accept | ready-for-checkin | needs-design | someday | unreview
+#       -> set the Triage stage
+#   @triagebot-test claim | unclaim
+#       -> take / drop ownership (claim replaces any previous assignee)
+#   @triagebot-test flag <name> | unflag <name>
+#       -> add / remove a Flags value; <name> is one of:
+#          patch-needs-improvement, needs-tests, needs-docs, easy, ui-ux
+#
+# On a pull request (so an author can act without leaving GitHub or needing
+# write access):
+#   @triagebot-test ready-for-review
+#       -> shorthand for "unflag patch-needs-improvement" on the linked issue(s):
+#          the author signals they've addressed the review, sending the ticket
+#          back to the review queue.
+#   @triagebot-test flag/unflag <name>  (also works, applied to linked issues)
+#
+# No org membership needed; GitHub records the comment author immutably, so
+# every change is auditable and reversible.
 #
 # Safety: the untrusted comment body is only read as a JavaScript variable
-# inside actions/github-script. It is never interpolated into a shell run: step,
-# and the workflow never checks out or executes comment-supplied code, so there
-# is no command-injection surface.
+# inside actions/github-script; nothing is interpolated into a shell run: step.
 
 on:
   issue_comment:
@@ -23,13 +31,12 @@ on:
 
 permissions:
   issues: write
+  pull-requests: read
   contents: read
 
 jobs:
   triage:
-    if: >-
-      github.event.issue.pull_request == null &&
-      github.event.comment.user.type != 'Bot'
+    if: github.event.comment.user.type != 'Bot'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,72 +49,131 @@ jobs:
             const map = JSON.parse(
               fs.readFileSync('.github/issue-field-map.json', 'utf8')
             );
+            const refresh = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/next-steps.js`);
             const HANDLE = '@triagebot-test';
+            const repo = { owner: context.repo.owner, repo: context.repo.repo };
+
             const STAGE_VERBS = {
               'accept': 'Accepted',
-              'ready': 'Ready for checkin',
+              'ready-for-checkin': 'Ready for checkin',
               'needs-design': 'Design decision needed',
               'someday': 'Someday/Maybe',
               'unreview': 'Unreviewed',
             };
+            const FLAG_NAMES = {
+              'patch-needs-improvement': 'Patch needs improvement',
+              'needs-tests': 'Needs tests',
+              'needs-docs': 'Needs documentation',
+              'easy': 'Easy pickings',
+              'ui-ux': 'UI/UX',
+            };
 
             const comment = context.payload.comment;
-            const issue = context.payload.issue;
-            const actor = comment.user.login;
-            const repo = { owner: context.repo.owner, repo: context.repo.repo };
+            const isPR = !!context.payload.issue.pull_request;
+            const react = (content) =>
+              github.rest.reactions.createForIssueComment(
+                { ...repo, comment_id: comment.id, content });
 
-            // Gather the recognised command from lines starting with the handle.
-            let stage = null, assign = null, sawCommand = false, unknown = null;
+            // Parse commands: verb + optional argument, one per line.
+            const cmds = [];
             for (const raw of (comment.body || '').split(/\r?\n/)) {
               const line = raw.trim();
               if (!line.toLowerCase().startsWith(HANDLE)) continue;
-              sawCommand = true;
-              const verb = line.slice(HANDLE.length).trim().toLowerCase().split(/\s+/)[0];
-              if (verb in STAGE_VERBS) stage = STAGE_VERBS[verb];
-              else if (verb === 'claim') assign = 'claim';
-              else if (verb === 'unclaim') assign = 'unclaim';
-              else unknown = verb;
+              const rest = line.slice(HANDLE.length).trim().toLowerCase().split(/\s+/);
+              cmds.push({ verb: rest[0], arg: rest[1] });
             }
-            if (!sawCommand) return;
+            if (!cmds.length) return;
 
-            const react = (content) =>
-              github.rest.reactions.createForIssueComment({
-                ...repo, comment_id: comment.id, content,
-              });
+            // Resolve which issues to act on: the issue itself, or (for a PR
+            // comment) the issues the PR would close.
+            let targets;
+            if (isPR) {
+              const data = await github.graphql(
+                `query($owner:String!,$repo:String!,$pr:Int!){
+                   repository(owner:$owner,name:$repo){
+                     pullRequest(number:$pr){
+                       closingIssuesReferences(first:20){nodes{number id}}
+                     }
+                   }
+                 }`,
+                { owner: repo.owner, repo: repo.repo, pr: context.payload.issue.number }
+              );
+              targets = data.repository.pullRequest.closingIssuesReferences.nodes
+                .map((n) => ({ number: n.number, node_id: n.id }));
+            } else {
+              targets = [{ number: context.payload.issue.number,
+                           node_id: context.payload.issue.node_id }];
+            }
+            if (!targets.length) { await react('confused'); return; }
 
-            let acted = false;
-
-            if (stage) {
-              const field = map['Triage stage'];
+            // Read an issue's current Flags option ids.
+            const flagsField = map['Flags'];
+            async function currentFlagIds(number) {
+              const d = await github.graphql(
+                `query($owner:String!,$repo:String!,$number:Int!){
+                   repository(owner:$owner,name:$repo){issue(number:$number){
+                     issueFieldValues(first:20){nodes{
+                       ... on IssueFieldMultiSelectValue{
+                         field{... on IssueFieldCommon{name}} options{id} }
+                     }}}}}`,
+                { owner: repo.owner, repo: repo.repo, number });
+              for (const n of d.repository.issue.issueFieldValues.nodes) {
+                if (n.field && n.field.name === 'Flags')
+                  return new Set(n.options.map((o) => o.id));
+              }
+              return new Set();
+            }
+            async function writeFlags(nodeId, ids) {
               await github.graphql(
                 `mutation($issue:ID!,$fields:[IssueFieldCreateOrUpdateInput!]!){
                    setIssueFieldValue(input:{issueId:$issue,issueFields:$fields}){
-                     clientMutationId
-                   }
-                 }`,
-                { issue: issue.node_id,
-                  fields: [{ fieldId: field.id, singleSelectOptionId: field.options[stage] }] }
-              );
-              // GITHUB_TOKEN field changes don't cascade to the next-steps
-              // workflow, so refresh the guidance comment directly here.
-              const refresh = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/next-steps.js`);
-              await refresh({ github, context });
-              acted = true;
+                     clientMutationId }}`,
+                { issue: nodeId,
+                  fields: [{ fieldId: flagsField.id, multiSelectOptionIds: [...ids] }] });
+            }
+            async function setStage(nodeId, stage) {
+              const f = map['Triage stage'];
+              await github.graphql(
+                `mutation($issue:ID!,$fields:[IssueFieldCreateOrUpdateInput!]!){
+                   setIssueFieldValue(input:{issueId:$issue,issueFields:$fields}){
+                     clientMutationId }}`,
+                { issue: nodeId,
+                  fields: [{ fieldId: f.id, singleSelectOptionId: f.options[stage] }] });
             }
 
-            if (assign === 'claim') {
-              // Takeover: replace the assignee set with just the commenter,
-              // unassigning whoever held it before.
-              await github.rest.issues.update({
-                ...repo, issue_number: issue.number, assignees: [actor],
-              });
-              acted = true;
-            } else if (assign === 'unclaim') {
-              await github.rest.issues.removeAssignees({
-                ...repo, issue_number: issue.number, assignees: [actor],
-              });
-              acted = true;
+            let acted = false;
+            for (const cmd of cmds) {
+              let { verb, arg } = cmd;
+              // Friendly shorthand.
+              if (verb === 'ready-for-review') { verb = 'unflag'; arg = 'patch-needs-improvement'; }
+
+              if (verb in STAGE_VERBS) {
+                if (isPR) continue; // stage changes only make sense on issues
+                await setStage(targets[0].node_id, STAGE_VERBS[verb]);
+                acted = true;
+              } else if (verb === 'claim' || verb === 'unclaim') {
+                if (isPR) continue;
+                const actor = comment.user.login;
+                if (verb === 'claim') {
+                  await github.rest.issues.update(
+                    { ...repo, issue_number: targets[0].number, assignees: [actor] });
+                } else {
+                  await github.rest.issues.removeAssignees(
+                    { ...repo, issue_number: targets[0].number, assignees: [actor] });
+                }
+                acted = true;
+              } else if ((verb === 'flag' || verb === 'unflag') && FLAG_NAMES[arg]) {
+                const optionId = flagsField.options[FLAG_NAMES[arg]];
+                for (const t of targets) {
+                  const ids = await currentFlagIds(t.number);
+                  if (verb === 'flag') ids.add(optionId); else ids.delete(optionId);
+                  await writeFlags(t.node_id, ids);
+                }
+                acted = true;
+              }
             }
 
+            if (acted) {
+              for (const t of targets) await refresh({ github, context, number: t.number });
+            }
             await react(acted ? '+1' : 'confused');
-            if (!acted) core.warning(`Unrecognised command: ${unknown}`);
