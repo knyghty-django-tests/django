@@ -108,3 +108,8 @@ jobs:
                 body: newBody,
               });
             }
+
+            // Post the initial "next steps" guidance (GITHUB_TOKEN field sets
+            // above don't cascade to the next-steps workflow).
+            const refresh = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/next-steps.js`);
+            await refresh({ github, context });

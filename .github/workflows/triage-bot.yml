@@ -86,6 +86,10 @@ jobs:
                 { issue: issue.node_id,
                   fields: [{ fieldId: field.id, singleSelectOptionId: field.options[stage] }] }
               );
+              // GITHUB_TOKEN field changes don't cascade to the next-steps
+              // workflow, so refresh the guidance comment directly here.
+              const refresh = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/next-steps.js`);
+              await refresh({ github, context });
               acted = true;
             }
 
