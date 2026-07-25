@@ -124,12 +124,16 @@ jobs:
               return new Set();
             }
             async function writeFlags(nodeId, ids) {
+              // An empty multiSelectOptionIds is rejected; clearing all options
+              // requires delete: true instead.
+              const field = ids.size
+                ? { fieldId: flagsField.id, multiSelectOptionIds: [...ids] }
+                : { fieldId: flagsField.id, delete: true };
               await github.graphql(
                 `mutation($issue:ID!,$fields:[IssueFieldCreateOrUpdateInput!]!){
                    setIssueFieldValue(input:{issueId:$issue,issueFields:$fields}){
                      clientMutationId }}`,
-                { issue: nodeId,
-                  fields: [{ fieldId: flagsField.id, multiSelectOptionIds: [...ids] }] });
+                { issue: nodeId, fields: [field] });
             }
             async function setStage(nodeId, stage) {
               const f = map['Triage stage'];
