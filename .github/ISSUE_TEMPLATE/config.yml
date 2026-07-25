@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Django's real ticket tracker
+    url: https://code.djangoproject.com/
+    about: This repository is a demo. Real bugs belong on Trac (for now…).
