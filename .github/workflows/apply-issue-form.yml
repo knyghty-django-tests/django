@@ -1,0 +1,110 @@
+name: Apply ticket form to issue fields
+
+# When a ticket is filed through an issue form, GitHub writes the answers into
+# the issue *body*. Native forms can't populate structured issue fields, so this
+# workflow reads those answers, sets the real fields (Component, Version,
+# Severity, Keywords, Flags, and Triage stage = Unreviewed), then rewrites the
+# body down to just the description to cut the form scaffolding noise.
+#
+# Safety: the untrusted issue body is only ever read as a JavaScript variable
+# inside actions/github-script (context.payload.issue.body). It is never
+# interpolated into a shell run: step, so there is no command-injection surface.
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const map = JSON.parse(
+              fs.readFileSync('.github/issue-field-map.json', 'utf8')
+            );
+            const issue = context.payload.issue;
+            const body = issue.body || '';
+
+            // Split the form output into { heading: content } by "### " headings.
+            const sections = {};
+            let current = null;
+            for (const line of body.split(/\r?\n/)) {
+              const m = line.match(/^###\s+(.*\S)\s*$/);
+              if (m) { current = m[1]; sections[current] = []; }
+              else if (current !== null) { sections[current].push(line); }
+            }
+            const get = (h) => (sections[h] || []).join('\n').trim();
+            const isBlank = (v) => !v || v === '_No response_';
+
+            // Build the issue-field values from the answers.
+            const fields = [];
+            const single = (label, answer) => {
+              if (isBlank(answer)) return;
+              const f = map[label];
+              const optionId = f && f.options[answer];
+              if (optionId) {
+                fields.push({ fieldId: f.id, singleSelectOptionId: optionId });
+              } else {
+                core.warning(`No ${label} option matches "${answer}"`);
+              }
+            };
+
+            single('Component', get('Component'));
+            single('Version', get('Version'));
+            // Severity only appears on the Bug form; default to Normal otherwise.
+            single('Severity', isBlank(get('Severity')) ? 'Normal' : get('Severity'));
+            // New tickets always enter the workflow as Unreviewed (Trac default).
+            single('Triage stage', 'Unreviewed');
+
+            const keywords = get('Keywords');
+            if (!isBlank(keywords)) {
+              fields.push({ fieldId: map['Keywords'].id, textValue: keywords });
+            }
+
+            // Flags checkboxes -> multi-select options.
+            const flagText = get('Flags');
+            const flagIds = [];
+            const flagMap = {
+              "I have a patch": "Has patch",
+              "This concerns UI/UX": "UI/UX",
+            };
+            for (const [needle, option] of Object.entries(flagMap)) {
+              const re = new RegExp(`- \\[[xX]\\][^\\n]*${needle}`);
+              if (re.test(flagText)) flagIds.push(map['Flags'].options[option]);
+            }
+            if (flagIds.length) {
+              fields.push({ fieldId: map['Flags'].id, multiSelectOptionIds: flagIds });
+            }
+
+            if (fields.length) {
+              await github.graphql(
+                `mutation($issue:ID!,$fields:[IssueFieldCreateOrUpdateInput!]!){
+                   setIssueFieldValue(input:{issueId:$issue,issueFields:$fields}){
+                     clientMutationId
+                   }
+                 }`,
+                { issue: issue.node_id, fields }
+              );
+            }
+
+            // Rewrite the body to just the description, dropping form scaffolding.
+            const description = get('Description');
+            const newBody = isBlank(description)
+              ? '_No description provided._'
+              : description;
+            if (newBody !== body) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: newBody,
+              });
+            }

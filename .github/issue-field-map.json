@@ -1,0 +1,90 @@
+{
+  "Triage stage": {
+    "id": "IFSS_kgDOAqlx7Q",
+    "options": {
+      "Unreviewed": "IFSSO_kgDOBKikBg",
+      "Accepted": "IFSSO_kgDOBKikBw",
+      "Ready for checkin": "IFSSO_kgDOBKikCA",
+      "Design decision needed": "IFSSO_kgDOBKikCQ",
+      "Someday/Maybe": "IFSSO_kgDOBKikCg"
+    }
+  },
+  "Component": {
+    "id": "IFSS_kgDOAqlx7g",
+    "options": {
+      "CSRF": "IFSSO_kgDOBKikCw",
+      "Core (Cache system)": "IFSSO_kgDOBKikDA",
+      "Core (Mail)": "IFSSO_kgDOBKikDQ",
+      "Core (Management commands)": "IFSSO_kgDOBKikDg",
+      "Core (Other)": "IFSSO_kgDOBKikDw",
+      "Core (Serialization)": "IFSSO_kgDOBKikEA",
+      "Core (System checks)": "IFSSO_kgDOBKikEQ",
+      "Core (URLs)": "IFSSO_kgDOBKikEg",
+      "Database layer (models, ORM)": "IFSSO_kgDOBKikEw",
+      "Documentation": "IFSSO_kgDOBKikFA",
+      "Error reporting": "IFSSO_kgDOBKikFQ",
+      "File uploads/storage": "IFSSO_kgDOBKikFg",
+      "Forms": "IFSSO_kgDOBKikFw",
+      "GIS": "IFSSO_kgDOBKikGA",
+      "Generic views": "IFSSO_kgDOBKikGQ",
+      "HTTP handling": "IFSSO_kgDOBKikGg",
+      "Internationalization": "IFSSO_kgDOBKikGw",
+      "Migrations": "IFSSO_kgDOBKikHA",
+      "Packaging": "IFSSO_kgDOBKikHQ",
+      "Tasks": "IFSSO_kgDOBKikHg",
+      "Template system": "IFSSO_kgDOBKikHw",
+      "Testing framework": "IFSSO_kgDOBKikIA",
+      "Uncategorized": "IFSSO_kgDOBKikIQ",
+      "Utilities": "IFSSO_kgDOBKikIg",
+      "contrib.admin": "IFSSO_kgDOBKikIw",
+      "contrib.admindocs": "IFSSO_kgDOBKikJA",
+      "contrib.auth": "IFSSO_kgDOBKikJQ",
+      "contrib.contenttypes": "IFSSO_kgDOBKikJg",
+      "contrib.flatpages": "IFSSO_kgDOBKikJw",
+      "contrib.humanize": "IFSSO_kgDOBKikKA",
+      "contrib.messages": "IFSSO_kgDOBKikKQ",
+      "contrib.postgres": "IFSSO_kgDOBKikKg",
+      "contrib.sessions": "IFSSO_kgDOBKikKw",
+      "contrib.sitemaps": "IFSSO_kgDOBKikLA",
+      "contrib.sites": "IFSSO_kgDOBKikLQ",
+      "contrib.staticfiles": "IFSSO_kgDOBKikLg",
+      "contrib.syndication": "IFSSO_kgDOBKikLw"
+    }
+  },
+  "Version": {
+    "id": "IFSS_kgDOAqlx7w",
+    "options": {
+      "3.0": "IFSSO_kgDOBKikMA",
+      "3.2": "IFSSO_kgDOBKikMQ",
+      "4.1": "IFSSO_kgDOBKikMg",
+      "4.2": "IFSSO_kgDOBKikMw",
+      "5.0": "IFSSO_kgDOBKikNA",
+      "5.1": "IFSSO_kgDOBKikNQ",
+      "5.2": "IFSSO_kgDOBKikNg",
+      "6.0": "IFSSO_kgDOBKikNw",
+      "6.1": "IFSSO_kgDOBKikOA",
+      "dev": "IFSSO_kgDOBKikOQ"
+    }
+  },
+  "Severity": {
+    "id": "IFSS_kgDOAqlx9A",
+    "options": {
+      "Normal": "IFSSO_kgDOBKikQQ",
+      "Release blocker": "IFSSO_kgDOBKikQg"
+    }
+  },
+  "Flags": {
+    "id": "IFMS_kgDOAqlx9Q",
+    "options": {
+      "Has patch": "IFSSO_kgDOBKikQw",
+      "Needs tests": "IFSSO_kgDOBKikRA",
+      "Needs documentation": "IFSSO_kgDOBKikRQ",
+      "Patch needs improvement": "IFSSO_kgDOBKikRg",
+      "Easy pickings": "IFSSO_kgDOBKikRw",
+      "UI/UX": "IFSSO_kgDOBKikSA"
+    }
+  },
+  "Keywords": {
+    "id": "IFT_kgDOAqmFCw"
+  }
+}
