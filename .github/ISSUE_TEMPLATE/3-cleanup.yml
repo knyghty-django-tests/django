@@ -7,6 +7,11 @@ body:
       value: |
         **This is a migration demo, not Django's real tracker** — real tickets go to
         [code.djangoproject.com](https://code.djangoproject.com/newticket).
+
+        ⚠️ **Do not report security issues here.** Security vulnerabilities must be
+        reported privately to **security@djangoproject.com** — see the
+        [security policy](https://docs.djangoproject.com/en/dev/internals/security/).
+        Public reports put users at risk.
   - type: textarea
     id: description
     attributes:
