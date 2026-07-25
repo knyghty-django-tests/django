@@ -1,0 +1,75 @@
+name: New ticket
+description: Report a bug or request a feature (mirrors Trac's new-ticket form)
+title: "[demo] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **This is a migration demo, not Django's real tracker.**
+        Real tickets go to [code.djangoproject.com](https://code.djangoproject.com/newticket).
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - "CSRF"
+        - "Core (Cache system)"
+        - "Core (Mail)"
+        - "Core (Management commands)"
+        - "Core (Other)"
+        - "Core (Serialization)"
+        - "Core (System checks)"
+        - "Core (URLs)"
+        - "Database layer (models, ORM)"
+        - "Documentation"
+        - "Error reporting"
+        - "File uploads/storage"
+        - "Forms"
+        - "GIS"
+        - "Generic views"
+        - "HTTP handling"
+        - "Internationalization"
+        - "Migrations"
+        - "Packaging"
+        - "Tasks"
+        - "Template system"
+        - "Testing framework"
+        - "Uncategorized"
+        - "Utilities"
+        - "contrib.admin"
+        - "contrib.admindocs"
+        - "contrib.auth"
+        - "contrib.contenttypes"
+        - "contrib.flatpages"
+        - "contrib.humanize"
+        - "contrib.messages"
+        - "contrib.postgres"
+        - "contrib.sessions"
+        - "contrib.sitemaps"
+        - "contrib.sites"
+        - "contrib.staticfiles"
+        - "contrib.syndication"
+    validations:
+      required: true
+  - type: dropdown
+    id: version
+    attributes:
+      label: Version
+      options:
+        - "3.0"
+        - "3.2"
+        - "4.1"
+        - "4.2"
+        - "5.0"
+        - "5.1"
+        - "5.2"
+        - "6.0"
+        - "6.1"
+        - "dev"
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened, and what did you expect?
+    validations:
+      required: true
