@@ -1,0 +1,1 @@
+Backport demo: AppRegistryNotReady fix for 5.2.x
