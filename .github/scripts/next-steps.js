@@ -14,7 +14,7 @@
 
 const MARKER = '<!-- triage-next-steps -->';
 
-function guidanceFor(stage, flags) {
+function guidanceFor(stage, flags, hasPatch) {
   if (stage === 'Unreviewed') {
     return "**Unreviewed** — The ticket has not been reviewed by anyone who felt " +
       "qualified to make a judgment about whether the ticket contained a valid " +
@@ -24,7 +24,7 @@ function guidanceFor(stage, flags) {
   if (stage === 'Accepted') {
     const needsWork = flags.has('Needs tests') ||
       flags.has('Needs documentation') || flags.has('Patch needs improvement');
-    if (!flags.has('Has patch')) {
+    if (!hasPatch) {
       return "**Accepted · Needs patch** — The ticket is valid, but no one has " +
         "submitted a patch for it yet. Often this means you could safely start " +
         "writing a fix for it.";
@@ -63,14 +63,15 @@ function guidanceFor(stage, flags) {
   return null;
 }
 
-module.exports = async ({ github, context }) => {
+module.exports = async ({ github, context, number }) => {
   const repo = { owner: context.repo.owner, repo: context.repo.repo };
-  const number = context.payload.issue.number;
+  number = number ?? context.payload.issue.number;
 
   const data = await github.graphql(
     `query($owner:String!,$repo:String!,$number:Int!){
        repository(owner:$owner,name:$repo){
          issue(number:$number){
+           closedByPullRequestsReferences(first:1,includeClosedPrs:true){totalCount}
            issueFieldValues(first:20){nodes{
              ... on IssueFieldSingleSelectValue{
                field{... on IssueFieldCommon{name}} value }
@@ -83,16 +84,20 @@ module.exports = async ({ github, context }) => {
     { owner: repo.owner, repo: repo.repo, number }
   );
 
+  const issueData = data.repository.issue;
+  // A linked pull request is the authoritative "has a patch" signal (replaces
+  // the old manual "Has patch" flag).
+  const hasPatch = issueData.closedByPullRequestsReferences.totalCount > 0;
   let stage = null;
   const flags = new Set();
-  for (const n of data.repository.issue.issueFieldValues.nodes) {
+  for (const n of issueData.issueFieldValues.nodes) {
     if (!n.field) continue;
     if (n.field.name === 'Triage stage') stage = n.value;
     if (n.field.name === 'Flags') for (const o of n.options) flags.add(o.name);
   }
   if (!stage) return;
 
-  const text = guidanceFor(stage, flags);
+  const text = guidanceFor(stage, flags, hasPatch);
   if (!text) return;
   const desired = `${MARKER}\n${text}`;
 

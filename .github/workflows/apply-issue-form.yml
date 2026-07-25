@@ -75,7 +75,6 @@ jobs:
             const flagText = get('Flags');
             const flagIds = [];
             const flagMap = {
-              "I have a patch": "Has patch",
               "This concerns UI/UX": "UI/UX",
             };
             for (const [needle, option] of Object.entries(flagMap)) {

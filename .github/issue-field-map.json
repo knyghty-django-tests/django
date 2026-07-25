@@ -76,7 +76,6 @@
   "Flags": {
     "id": "IFMS_kgDOAqlx9Q",
     "options": {
-      "Has patch": "IFSSO_kgDOBKikQw",
       "Needs tests": "IFSSO_kgDOBKikRA",
       "Needs documentation": "IFSSO_kgDOBKikRQ",
       "Patch needs improvement": "IFSSO_kgDOBKikRg",

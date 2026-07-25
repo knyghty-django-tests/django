@@ -98,5 +98,4 @@ body:
     attributes:
       label: Flags
       options:
-        - label: I have a patch (I'll open a pull request)
         - label: This concerns UI/UX
