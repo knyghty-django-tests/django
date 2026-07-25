@@ -1,22 +1,12 @@
-name: New ticket
-description: Report a bug, request a feature, or propose a cleanup
+name: Bug report
+description: Report something broken in Django
+type: "Bug"
 body:
   - type: markdown
     attributes:
       value: |
         **This is a migration demo, not Django's real tracker** — real tickets go to
-        [code.djangoproject.com](https://code.djangoproject.com/newticket). A triager
-        will set the issue Type, Triage stage and other fields when reviewing.
-  - type: dropdown
-    id: type
-    attributes:
-      label: Type
-      options:
-        - "Bug"
-        - "New feature"
-        - "Cleanup/optimization"
-    validations:
-      required: true
+        [code.djangoproject.com](https://code.djangoproject.com/newticket).
   - type: textarea
     id: description
     attributes:
@@ -84,6 +74,15 @@ body:
         - "6.0"
         - "6.1"
         - "dev"
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: Release blockers are regressions in the current release cycle.
+      options:
+        - "Normal"
+        - "Release blocker"
+      default: 0
   - type: input
     id: keywords
     attributes:
