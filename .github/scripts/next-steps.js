@@ -3,13 +3,13 @@
 // three Accepted sub-queues) and rewrites the comment in place, so there is no
 // noise on repeated runs.
 //
-// All guidance text is quoted from Django's triaging-tickets documentation.
+// The guidance text quotes Django's triaging-tickets documentation verbatim.
 //
-// Called from three places so every stage change is covered, however it is made:
+// Three callers cover every stage change, whatever its source:
 //   - next-steps.yml            (human / web-UI field changes, via field_added)
 //   - triage-bot.yml            (after the bot changes a stage with GITHUB_TOKEN)
-//   - apply-issue-form.yml      (after a new ticket's fields are set)
-// The latter two are needed because field changes made with GITHUB_TOKEN do not
+//   - apply-issue-form.yml      (after setting a new ticket's fields)
+// The latter two matter because field changes made with GITHUB_TOKEN do not
 // themselves trigger further workflow runs.
 
 const MARKER = '<!-- triage-next-steps -->';
